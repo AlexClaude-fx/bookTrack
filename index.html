@@ -79,6 +79,7 @@
   .sync-line{font-size:.78rem;color:var(--brass-bright);opacity:.8;margin-bottom:22px;display:flex;gap:8px;align-items:center;}
   .sync-dot{width:7px;height:7px;border-radius:50%;background:var(--forest);display:inline-block;}
   .sync-dot.busy{background:var(--brass);}
+  .sync-dot.error{background:var(--oxblood);}
 
   section.shelf{margin-bottom:34px;}
   section.shelf h2{
@@ -261,9 +262,10 @@ let editingId = null;
 
 const norm = s => (s||"").toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
 const $ = id => document.getElementById(id);
-function setSync(text, busy){
+function setSync(text, busy, isError){
   $("syncText").textContent = text;
-  $("syncDot").className = "sync-dot" + (busy ? " busy" : "");
+  $("syncText").style.color = isError ? "var(--oxblood)" : "";
+  $("syncDot").className = "sync-dot" + (busy ? " busy" : "") + (isError ? " error" : "");
 }
 
 async function sheetGet(){
@@ -278,11 +280,12 @@ async function sheetPost(payload){
   });
 }
 
+let importError = null;
 async function importFromSheetIfNeeded(){
-  const snap = await metaDoc.get();
-  if(snap.exists && snap.data().imported){ return; }
-  setSync("Importando tus libros del Sheet…", true);
   try{
+    const snap = await metaDoc.get();
+    if(snap.exists && snap.data().imported){ return; }
+    setSync("Importando tus libros del Sheet…", true);
     const data = await sheetGet();
     const batch = db.batch();
     (data.books||[]).forEach(row=>{
@@ -299,6 +302,8 @@ async function importFromSheetIfNeeded(){
     await metaDoc.set({imported:true, importedAt: firebase.firestore.FieldValue.serverTimestamp()});
   }catch(err){
     console.error("Import error", err);
+    importError = "No se pudo importar del Sheet: " + (err.message||err);
+    setSync(importError, false, true);
   }
 }
 
@@ -416,7 +421,7 @@ async function saveBook(){
   }catch(err){
     console.error(err);
     alert("Algo falló guardando el libro. Revisa la consola.");
-    setSync("Error al sincronizar", false);
+    setSync("Error al sincronizar: " + (err.message||err), false, true);
   }finally{
     $("saveBook").disabled = false;
   }
@@ -624,14 +629,15 @@ $("filterStatus").addEventListener("change", render);
 $("filterRead").addEventListener("change", render);
 
 (async function init(){
-  await importFromSheetIfNeeded();
+  try{ await importFromSheetIfNeeded(); }catch(e){ console.error("init import failed", e); }
   booksCol.onSnapshot(snap=>{
     allBooks = snap.docs.map(d=>({id:d.id, ...d.data()}));
-    setSync("Sincronizado con tu Sheet", false);
+    if(importError){ setSync(importError, false, true); }
+    else{ setSync("Sincronizado con tu Sheet", false); }
     render();
   }, err=>{
     console.error(err);
-    setSync("Error de conexión con Firebase", false);
+    setSync("Error de conexión con Firebase: " + (err.message||err.code||err), false, true);
   });
 })();
 </script>
