@@ -142,6 +142,7 @@
     <p class="tagline">Leídos, en la estantería y por comprar — todo en un sitio</p>
     <div class="toolbar">
       <input type="search" id="searchBox" placeholder="Buscar por título o autor…">
+      <button class="btn-ghost" id="searchGo">Buscar</button>
       <select id="filterStatus">
         <option value="">Todos los estados</option>
         <option value="Physical">Físico</option>
@@ -618,6 +619,7 @@ $("scanBtn").addEventListener("click", startScan);
 $("cancelScan").addEventListener("click", stopScan);
 
 $("searchBox").addEventListener("input", render);
+$("searchGo").addEventListener("click", ()=>{ render(); $("searchBox").blur(); });
 $("filterStatus").addEventListener("change", render);
 $("filterRead").addEventListener("change", render);
 
