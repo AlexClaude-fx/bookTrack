@@ -161,7 +161,7 @@
 </header>
 
 <main>
-  <div class="sync-line"><span class="sync-dot" id="syncDot"></span><span id="syncText">Conectando con tu Sheet…</span></div>
+  <div class="sync-line"><span class="sync-dot" id="syncDot"></span><span id="syncText">Conectando con tu Sheet…</span><button class="btn-link" id="resyncBtn" style="padding:0 0 0 6px;">🔄 Releer del Sheet</button></div>
   <div id="shelves"></div>
 </main>
 
@@ -281,28 +281,33 @@ async function sheetPost(payload){
 }
 
 let importError = null;
-async function importFromSheetIfNeeded(){
+async function syncFromSheet(){
   try{
-    const snap = await metaDoc.get();
-    if(snap.exists && snap.data().imported){ return; }
-    setSync("Importando tus libros del Sheet…", true);
+    setSync("Sincronizando con el Sheet…", true);
     const data = await sheetGet();
+    const rows = data.books || [];
+    if(!rows.length){
+      importError = "El Sheet respondió pero sin libros — revisa que 'Libreria Luigia' sea el nombre correcto de la pestaña en Code.gs.";
+      setSync(importError, false, true);
+      return;
+    }
     const batch = db.batch();
-    (data.books||[]).forEach(row=>{
-      const ref = booksCol.doc();
+    rows.forEach(row=>{
+      if(!row.rowIndex) return;
+      const ref = booksCol.doc("row_"+row.rowIndex);
       batch.set(ref, {
         author: row.Author||"", title: row.Title||"", country: row.Country||"",
         language: row.Language||"", genre: row.Genre||"", subgenre: row["Sub-genre"]||"",
         prize: row.Prize||"", status: row.Status||"Physical",
         read: row.Read === true || row.Read === "TRUE",
-        rowIndex: row.rowIndex, createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
+        rowIndex: row.rowIndex, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, {merge:true});
     });
     await batch.commit();
-    await metaDoc.set({imported:true, importedAt: firebase.firestore.FieldValue.serverTimestamp()});
+    importError = null;
   }catch(err){
-    console.error("Import error", err);
-    importError = "No se pudo importar del Sheet: " + (err.message||err);
+    console.error("Sync error", err);
+    importError = "No se pudo sincronizar con el Sheet: " + (err.message||err);
     setSync(importError, false, true);
   }
 }
@@ -415,7 +420,8 @@ async function saveBook(){
     const match = (data.books||[]).filter(r => norm(r.Author)===norm(book.author) && norm(r.Title)===norm(book.title));
     const rowIndex = match.length ? match[match.length-1].rowIndex : null;
 
-    await booksCol.add({...book, rowIndex, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+    const ref = rowIndex ? booksCol.doc("row_"+rowIndex) : booksCol.doc();
+    await ref.set({...book, rowIndex, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
     setSync("Sincronizado con tu Sheet", false);
     closeModal();
   }catch(err){
@@ -623,13 +629,14 @@ async function startScan(){
 $("scanBtn").addEventListener("click", startScan);
 $("cancelScan").addEventListener("click", stopScan);
 
+$("resyncBtn").addEventListener("click", syncFromSheet);
 $("searchBox").addEventListener("input", render);
 $("searchGo").addEventListener("click", ()=>{ render(); $("searchBox").blur(); });
 $("filterStatus").addEventListener("change", render);
 $("filterRead").addEventListener("change", render);
 
 (async function init(){
-  try{ await importFromSheetIfNeeded(); }catch(e){ console.error("init import failed", e); }
+  try{ await syncFromSheet(); }catch(e){ console.error("init sync failed", e); }
   booksCol.onSnapshot(snap=>{
     allBooks = snap.docs.map(d=>({id:d.id, ...d.data()}));
     if(importError){ setSync(importError, false, true); }
