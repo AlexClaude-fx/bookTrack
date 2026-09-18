@@ -116,8 +116,8 @@
   .modal input[type="text"], .modal select{
     width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:var(--radius);font-size:.92rem;font-family:inherit;background:#fff;
   }
-  .search-row{display:flex;gap:8px;}
-  .search-row input{flex:1;}
+  .search-row{display:flex;flex-wrap:wrap;gap:8px;}
+  .search-row input{flex:1 1 140px;min-width:0;}
   .results{margin-top:10px;max-height:220px;overflow-y:auto;border:1px solid var(--line);border-radius:var(--radius);}
   .result-item{padding:9px 10px;border-bottom:1px solid var(--line);cursor:pointer;font-size:.85rem;}
   .result-item:last-child{border-bottom:none;}
