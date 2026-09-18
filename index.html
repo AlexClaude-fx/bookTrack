@@ -140,9 +140,9 @@
 <header>
   <div class="inner">
     <h1>Mi Biblioteca</h1>
-    <p class="tagline">Leídos, en la estantería y por comprar — todo en un sitio</p>
+    <p class="tagline">Busca un autor o título para saber si ya lo tienes</p>
     <div class="toolbar">
-      <input type="search" id="searchBox" placeholder="Buscar por título o autor…">
+      <input type="search" id="searchBox" placeholder="Autor o título…">
       <button class="btn-ghost" id="searchGo">Buscar</button>
       <select id="filterStatus">
         <option value="">Todos los estados</option>
@@ -316,6 +316,17 @@ function render(){
   const q = norm($("searchBox").value);
   const fStatus = $("filterStatus").value;
   const fRead = $("filterRead").value;
+  const active = q || fStatus || fRead;
+
+  const shelves = $("shelves");
+  shelves.innerHTML = "";
+
+  if(!active){
+    shelves.innerHTML = `<div class="empty" style="padding:40px 0;text-align:center;">
+      Escribe un autor o un título arriba para ver si ya lo tienes, y en qué estado está.
+    </div>`;
+    return;
+  }
 
   const filtered = allBooks.filter(b=>{
     if(q && !(norm(b.author).includes(q) || norm(b.title).includes(q))) return false;
@@ -325,22 +336,22 @@ function render(){
     return true;
   });
 
+  if(filtered.length===0){
+    shelves.innerHTML = `<div class="empty" style="padding:20px 0;">No tienes ningún libro que coincida — puede que aún no lo tengas.</div>`;
+    return;
+  }
+
   const groups = {Physical:"En la estantería (físico)", Digital:"En la estantería (digital)", Wishlist:"Lista de deseos"};
-  const shelves = $("shelves");
-  shelves.innerHTML = "";
   Object.keys(groups).forEach(statusKey=>{
     const items = filtered.filter(b=>b.status===statusKey);
+    if(items.length===0) return;
     const section = document.createElement("section");
     section.className = "shelf";
     section.innerHTML = `<h2>${groups[statusKey]} <span class="shelf-count">(${items.length})</span></h2>`;
     const grid = document.createElement("div");
     grid.className = "grid";
-    if(items.length===0){
-      grid.innerHTML = `<div class="empty">Nada por aquí todavía.</div>`;
-    }else{
-      items.sort((a,b)=> (a.author||"").localeCompare(b.author||""));
-      items.forEach(b=> grid.appendChild(renderCard(b)));
-    }
+    items.sort((a,b)=> (a.author||"").localeCompare(b.author||""));
+    items.forEach(b=> grid.appendChild(renderCard(b)));
     section.appendChild(grid);
     shelves.appendChild(section);
   });
