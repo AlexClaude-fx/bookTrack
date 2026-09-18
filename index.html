@@ -427,6 +427,44 @@ async function searchBooks(query){
   return data.items || [];
 }
 
+function isbn13to10(isbn13){
+  isbn13 = (isbn13||"").replace(/[^0-9]/g,"");
+  if(isbn13.length !== 13 || !isbn13.startsWith("978")) return null;
+  const core = isbn13.substring(3,12);
+  let sum = 0;
+  for(let i=0;i<9;i++){ sum += (10-i) * parseInt(core[i],10); }
+  const check = (11 - (sum % 11)) % 11;
+  return core + (check === 10 ? "X" : String(check));
+}
+
+async function lookupOpenLibrary(isbn){
+  try{
+    const res = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`);
+    const data = await res.json();
+    const book = data[`ISBN:${isbn}`];
+    if(!book) return null;
+    return { volumeInfo: {
+      title: book.title || "",
+      authors: (book.authors||[]).map(a=>a.name),
+      categories: (book.subjects||[]).map(s=>s.name),
+      language: ""
+    }};
+  }catch(err){ console.error("Open Library lookup failed", err); return null; }
+}
+
+/* Try the exact ISBN, then its ISBN-10 form, then Open Library, before giving up */
+async function searchByIsbnChain(isbn){
+  let items = await searchBooks(`isbn:${isbn}`);
+  if(items.length) return items;
+  const isbn10 = isbn13to10(isbn);
+  if(isbn10){
+    items = await searchBooks(`isbn:${isbn10}`);
+    if(items.length) return items;
+  }
+  const ol = await lookupOpenLibrary(isbn);
+  return ol ? [ol] : [];
+}
+
 function formatAuthor(name){
   if(!name) return "";
   const parts = name.trim().split(/\s+/);
@@ -529,11 +567,13 @@ $("f_title").addEventListener("blur", checkAndWarnDuplicate);
 async function runSearch(q){
   if(!q) return;
   $("doSearch").innerHTML = `<span class="spinner"></span>`;
-  const items = await searchBooks(q);
+  const bareDigits = q.replace(/^isbn:/i,"").replace(/[^0-9Xx]/g,"");
+  const looksLikeIsbn = /^isbn:/i.test(q) || /^(?:\d{13}|\d{9}[\dXx])$/.test(bareDigits);
+  const items = looksLikeIsbn ? await searchByIsbnChain(bareDigits) : await searchBooks(q);
   $("doSearch").textContent = "Buscar";
   const box = $("results");
   box.style.display = "block";
-  box.innerHTML = items.length ? "" : `<div class="result-item">Sin resultados — prueba "Rellenar a mano".</div>`;
+  box.innerHTML = items.length ? "" : `<div class="result-item">No lo encuentro ni por ISBN ni en Open Library — prueba a buscar por título/autor, o "Rellenar a mano".</div>`;
   items.forEach(item=>{
     const info = item.volumeInfo||{};
     const div = document.createElement("div");
