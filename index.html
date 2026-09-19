@@ -368,10 +368,12 @@ function renderCard(b){
     <div class="tags">${tags}</div>
     <div class="row-actions">
       <button class="mark-read ${b.read?"done":""}" data-id="${b.id}">${b.read ? "Leído ✓" : "Marcar leído"}</button>
+      <button class="icon-btn" data-edit="${b.id}" title="Editar">✏️</button>
       <button class="icon-btn" data-del="${b.id}" title="Eliminar">🗑</button>
     </div>
   `;
   card.querySelector(".mark-read").addEventListener("click", ()=>toggleRead(b));
+  card.querySelector("[data-edit]").addEventListener("click", ()=>openEditModal(b));
   card.querySelector("[data-del]").addEventListener("click", ()=>deleteBook(b));
   return card;
 }
@@ -406,7 +408,7 @@ function toSheetRow(b){
 
 function checkDuplicate(author, title){
   const a = norm(author), t = norm(title);
-  return allBooks.find(b => norm(b.author)===a && norm(b.title)===t);
+  return allBooks.find(b => b.id!==editingId && norm(b.author)===a && norm(b.title)===t);
 }
 
 async function saveBook(){
@@ -418,21 +420,29 @@ async function saveBook(){
     genre: $("f_genre").value.trim(),
     subgenre: $("f_subgenre").value.trim(),
     status: $("f_status").value,
-    prize: $("f_prize").value.trim(),
-    read: false
+    prize: $("f_prize").value.trim()
   };
   if(!book.title){ alert("Ponle al menos un título."); return; }
 
   $("saveBook").disabled = true;
   setSync("Guardando…", true);
   try{
-    await sheetPost({action:"add", book: toSheetRow(book)});
-    const data = await sheetGet();
-    const match = (data.books||[]).filter(r => norm(r.Author)===norm(book.author) && norm(r.Title)===norm(book.title));
-    const rowIndex = match.length ? match[match.length-1].rowIndex : null;
-
-    const ref = rowIndex ? booksCol.doc("row_"+rowIndex) : booksCol.doc();
-    await ref.set({...book, rowIndex, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+    if(editingId){
+      const original = allBooks.find(b=>b.id===editingId);
+      book.read = original ? original.read : false;
+      await booksCol.doc(editingId).update(book);
+      if(original && original.rowIndex){
+        await sheetPost({action:"update", rowIndex: original.rowIndex, book: toSheetRow(book)});
+      }
+    }else{
+      book.read = false;
+      await sheetPost({action:"add", book: toSheetRow(book)});
+      const data = await sheetGet();
+      const match = (data.books||[]).filter(r => norm(r.Author)===norm(book.author) && norm(r.Title)===norm(book.title));
+      const rowIndex = match.length ? match[match.length-1].rowIndex : null;
+      const ref = rowIndex ? booksCol.doc("row_"+rowIndex) : booksCol.doc();
+      await ref.set({...book, rowIndex, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+    }
     setSync("Sincronizado con tu Sheet", false);
     closeModal();
   }catch(err){
@@ -534,6 +544,7 @@ async function lookupCountry(authorName){
 function openModal(){
   editingId = null;
   $("overlay").classList.add("open");
+  $("modalTitle").textContent = "Añadir libro";
   $("searchStep").style.display = "block";
   $("formStep").style.display = "none";
   $("results").style.display = "none";
@@ -544,7 +555,26 @@ function openModal(){
   $("f_status").value = "Wishlist";
   $("countryHint").textContent = "";
 }
-function closeModal(){ stopScan(); $("overlay").classList.remove("open"); }
+function closeModal(){ stopScan(); editingId = null; $("overlay").classList.remove("open"); }
+
+function openEditModal(b){
+  editingId = b.id;
+  $("overlay").classList.add("open");
+  $("modalTitle").textContent = "Editar libro";
+  $("searchStep").style.display = "none";
+  $("scanBox").style.display = "none";
+  $("formStep").style.display = "block";
+  $("dupWarning").style.display = "none";
+  $("f_title").value = b.title||"";
+  $("f_author").value = b.author||"";
+  $("f_country").value = b.country||"";
+  $("f_language").value = b.language||"";
+  $("f_genre").value = b.genre||"";
+  $("f_subgenre").value = b.subgenre||"";
+  $("f_status").value = b.status||"Wishlist";
+  $("f_prize").value = b.prize||"";
+  $("countryHint").textContent = "";
+}
 
 function goToForm(){
   $("searchStep").style.display = "none";
