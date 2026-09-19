@@ -456,6 +456,9 @@ async function saveBook(){
 async function searchBooks(query){
   const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=8`);
   const data = await res.json();
+  if(data.error){
+    throw new Error(`Google Books: ${data.error.message||data.error.status||"error desconocido"}`);
+  }
   return data.items || [];
 }
 
@@ -619,13 +622,24 @@ $("f_title").addEventListener("blur", checkAndWarnDuplicate);
 async function runSearch(q){
   if(!q) return;
   $("doSearch").innerHTML = `<span class="spinner"></span>`;
-  const bareDigits = q.replace(/^isbn:/i,"").replace(/[^0-9Xx]/g,"");
-  const looksLikeIsbn = /^isbn:/i.test(q) || /^(?:\d{13}|\d{9}[\dXx])$/.test(bareDigits);
-  const items = looksLikeIsbn ? await searchByIsbnChain(bareDigits) : await searchBooks(q);
-  $("doSearch").textContent = "Buscar";
   const box = $("results");
   box.style.display = "block";
-  box.innerHTML = items.length ? "" : `<div class="result-item">No lo encuentro ni por ISBN ni en Open Library — prueba a buscar por título/autor, o "Rellenar a mano".</div>`;
+  const bareDigits = q.replace(/^isbn:/i,"").replace(/[^0-9Xx]/g,"");
+  const looksLikeIsbn = /^isbn:/i.test(q) || /^(?:\d{13}|\d{9}[\dXx])$/.test(bareDigits);
+  let items = [];
+  try{
+    items = looksLikeIsbn ? await searchByIsbnChain(bareDigits) : await searchBooks(q);
+  }catch(err){
+    console.error("Search failed", err);
+    $("doSearch").textContent = "Buscar";
+    box.innerHTML = `<div class="result-item">Fallo al buscar: ${err.message||err} — prueba de nuevo en un momento, o "Rellenar a mano".</div>`;
+    return;
+  }
+  $("doSearch").textContent = "Buscar";
+  const notFoundMsg = looksLikeIsbn
+    ? `No lo encuentro ni por ISBN ni en Open Library — prueba a buscar por título/autor, o "Rellenar a mano".`
+    : `Sin resultados para esa búsqueda — prueba con otras palabras, o "Rellenar a mano".`;
+  box.innerHTML = items.length ? "" : `<div class="result-item">${notFoundMsg}</div>`;
   items.forEach(item=>{
     const info = item.volumeInfo||{};
     const div = document.createElement("div");
