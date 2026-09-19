@@ -475,7 +475,10 @@ function isbn13to10(isbn13){
 
 async function lookupOpenLibrary(isbn){
   const res = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`);
-  const data = await res.json();
+  const text = await res.text();
+  if(!text || !text.trim()) return null; // Open Library returns an empty body when nothing matches
+  let data;
+  try{ data = JSON.parse(text); }catch(e){ return null; }
   const book = data[`ISBN:${isbn}`];
   if(!book) return null;
   return { volumeInfo: {
@@ -507,9 +510,17 @@ async function searchByIsbnChain(isbn){
   try{
     const ol = await lookupOpenLibrary(isbn);
     log.push(`Open Library: ${ol ? "encontrado" : "sin resultado"}`);
-    return {items: ol ? [ol] : [], log};
+    if(ol) return {items:[ol], log};
   }catch(err){
     log.push(`Open Library falló: ${err.message||err}`);
+  }
+
+  try{
+    const items = await searchBooks(isbn);
+    log.push(`Google Books (texto plano "${isbn}"): ${items.length} resultado(s)`);
+    return {items, log};
+  }catch(err){
+    log.push(`Google Books (texto plano) falló: ${err.message||err}`);
     return {items:[], log};
   }
 }
