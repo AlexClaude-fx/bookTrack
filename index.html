@@ -95,6 +95,10 @@
     display:flex;flex-direction:column;gap:6px;
   }
   .card.read{opacity:.72;}
+  .card-row{display:flex;gap:10px;}
+  .cover-thumb{width:48px;height:70px;object-fit:cover;border-radius:2px;flex-shrink:0;background:var(--paper-dim);}
+  .cover-placeholder{display:flex;align-items:center;justify-content:center;font-size:1.3rem;border:1px solid var(--line);}
+  .card-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;}
   .card .title{font-family:'Fraunces',serif;font-weight:600;font-size:1.05rem;line-height:1.25;}
   .card .author{font-size:.88rem;color:var(--ink-soft);}
   .card .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px;}
@@ -127,6 +131,7 @@
   .field-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 12px;}
   .field-grid .full{grid-column:1/-1;}
   .warning{background:#f4dede;border:1px solid var(--oxblood);color:var(--oxblood);padding:9px 11px;border-radius:var(--radius);font-size:.82rem;margin-top:12px;}
+  .warning.ok{background:#e2ecdf;border-color:var(--forest);color:var(--forest);}
   .hint{font-size:.72rem;color:var(--ink-soft);margin-top:3px;}
   .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;}
   .btn-link{background:none;border:none;color:var(--ink-soft);font-size:.85rem;text-decoration:underline;padding:6px;}
@@ -143,17 +148,6 @@
     <p class="tagline">Busca un autor o título para saber si ya lo tienes</p>
     <div class="toolbar">
       <input type="search" id="searchBox" placeholder="Autor o título…">
-      <select id="filterStatus">
-        <option value="">Todos los estados</option>
-        <option value="Physical">Físico</option>
-        <option value="Digital">Digital</option>
-        <option value="Wishlist">Lista de deseos</option>
-      </select>
-      <select id="filterRead">
-        <option value="">Leído o no</option>
-        <option value="yes">Leídos</option>
-        <option value="no">Pendientes</option>
-      </select>
       <button class="btn-primary" id="openAdd">+ Añadir libro</button>
     </div>
   </div>
@@ -215,7 +209,7 @@
           <label>Subgénero</label>
           <input type="text" id="f_subgenre">
         </div>
-        <div>
+        <div id="statusField">
           <label>Estado</label>
           <select id="f_status">
             <option value="Physical">Físico</option>
@@ -310,27 +304,20 @@ async function syncFromSheet(){
 
 function render(){
   const q = norm($("searchBox").value);
-  const fStatus = $("filterStatus").value;
-  const fRead = $("filterRead").value;
-  const active = q || fStatus || fRead;
 
   const shelves = $("shelves");
   shelves.innerHTML = "";
 
-  if(!active){
+  if(!q){
     shelves.innerHTML = `<div class="empty" style="padding:40px 0;text-align:center;">
       Escribe un autor o un título arriba para ver si ya lo tienes, y en qué estado está.
     </div>`;
     return;
   }
 
-  const filtered = allBooks.filter(b=>{
-    if(q && !(norm(b.author).includes(q) || norm(b.title).includes(q))) return false;
-    if(fStatus && b.status !== fStatus) return false;
-    if(fRead === "yes" && !b.read) return false;
-    if(fRead === "no" && b.read) return false;
-    return true;
-  });
+  const filtered = allBooks.filter(b=>
+    norm(b.author).includes(q) || norm(b.title).includes(q)
+  );
 
   if(filtered.length===0){
     shelves.innerHTML = `<div class="empty" style="padding:20px 0;">No tienes ningún libro que coincida — puede que aún no lo tengas.</div>`;
@@ -358,14 +345,20 @@ function renderCard(b){
   card.className = "card" + (b.read ? " read":"");
   const tags = [b.language, b.genre, b.subgenre, b.country].filter(Boolean)
     .map(t=>`<span class="tag">${t}</span>`).join("");
+  const coverHtml = b.cover ? `<img class="cover-thumb" src="${b.cover}" alt="">` : `<div class="cover-thumb cover-placeholder">📖</div>`;
   card.innerHTML = `
-    <div class="title">${b.title||"(sin título)"}</div>
-    <div class="author">${b.author||"(autor desconocido)"}</div>
-    <div class="tags">${tags}</div>
-    <div class="row-actions">
-      <button class="mark-read ${b.read?"done":""}" data-id="${b.id}">${b.read ? "Leído ✓" : "Marcar leído"}</button>
-      <button class="icon-btn" data-edit="${b.id}" title="Editar">✏️</button>
-      <button class="icon-btn" data-del="${b.id}" title="Eliminar">🗑</button>
+    <div class="card-row">
+      ${coverHtml}
+      <div class="card-body">
+        <div class="title">${b.title||"(sin título)"}</div>
+        <div class="author">${b.author||"(autor desconocido)"}</div>
+        <div class="tags">${tags}</div>
+        <div class="row-actions">
+          <button class="mark-read ${b.read?"done":""}" data-id="${b.id}">${b.read ? "Leído ✓" : "Marcar leído"}</button>
+          <button class="icon-btn" data-edit="${b.id}" title="Editar">✏️</button>
+          <button class="icon-btn" data-del="${b.id}" title="Eliminar">🗑</button>
+        </div>
+      </div>
     </div>
   `;
   card.querySelector(".mark-read").addEventListener("click", ()=>toggleRead(b));
@@ -429,6 +422,7 @@ async function saveBook(){
       const original = allBooks.find(b=>b.id===editingId);
       book.read = original ? original.read : false;
       book.prize = original ? (original.prize||"") : "";
+      book.cover = original ? (original.cover||"") : "";
       await booksCol.doc(editingId).update(book);
       if(original && original.rowIndex){
         await sheetPost({action:"update", rowIndex: original.rowIndex, book: toSheetRow(book)});
@@ -436,6 +430,7 @@ async function saveBook(){
     }else{
       book.read = false;
       book.prize = "";
+      book.cover = pendingCover;
       await sheetPost({action:"add", book: toSheetRow(book)});
       const data = await sheetGet();
       const match = (data.books||[]).filter(r => norm(r.Author)===norm(book.author) && norm(r.Title)===norm(book.title));
@@ -580,7 +575,9 @@ function openModal(){
   $("bookQuery").value = "";
   $("dupWarning").style.display = "none";
   ["f_title","f_author","f_country","f_language","f_genre","f_subgenre"].forEach(id=>$(id).value="");
-  $("f_status").value = "Wishlist";
+  $("f_status").value = "Physical";
+  $("statusField").style.display = "none";
+  pendingCover = "";
   $("countryHint").textContent = "";
 }
 function closeModal(){ stopScan(); editingId = null; $("overlay").classList.remove("open"); }
@@ -600,6 +597,7 @@ function openEditModal(b){
   $("f_genre").value = b.genre||"";
   $("f_subgenre").value = b.subgenre||"";
   $("f_status").value = b.status||"Wishlist";
+  $("statusField").style.display = "block";
   $("countryHint").textContent = "";
 }
 
@@ -608,6 +606,7 @@ function goToForm(){
   $("formStep").style.display = "block";
 }
 
+let pendingCover = "";
 async function fillFormFromResult(item){
   const info = item.volumeInfo || {};
   const rawAuthor = (info.authors||[])[0] || "";
@@ -619,6 +618,7 @@ async function fillFormFromResult(item){
   $("f_subgenre").value = subgenre;
   $("f_country").value = "";
   $("countryHint").textContent = "Buscando país del autor…";
+  pendingCover = (info.imageLinks && info.imageLinks.thumbnail) ? info.imageLinks.thumbnail.replace(/^http:/,"https:") : "";
   goToForm();
   checkAndWarnDuplicate();
   const country = await lookupCountry(rawAuthor);
@@ -627,12 +627,16 @@ async function fillFormFromResult(item){
 }
 
 function checkAndWarnDuplicate(){
+  const box = $("dupWarning");
+  if(!$("f_title").value.trim()){ box.style.display = "none"; return; }
   const dup = checkDuplicate($("f_author").value, $("f_title").value);
+  box.style.display = "block";
   if(dup){
-    $("dupWarning").style.display = "block";
-    $("dupWarning").textContent = `Ya tienes esta obra (${dup.language||"idioma no indicado"}, ${dup.status}). Puedes seguir si quieres otra edición.`;
+    box.classList.remove("ok");
+    box.textContent = `Ya tienes esta obra (${dup.language||"idioma no indicado"}, ${dup.status}). Puedes seguir si quieres otra edición.`;
   }else{
-    $("dupWarning").style.display = "none";
+    box.classList.add("ok");
+    box.textContent = `No la tienes todavía en tu biblioteca.`;
   }
 }
 
@@ -724,8 +728,7 @@ $("cancelScan").addEventListener("click", stopScan);
 
 $("resyncBtn").addEventListener("click", syncFromSheet);
 $("searchBox").addEventListener("input", render);
-$("filterStatus").addEventListener("change", render);
-$("filterRead").addEventListener("change", render);
+
 
 (async function init(){
   try{ await syncFromSheet(); }catch(e){ console.error("init sync failed", e); }
