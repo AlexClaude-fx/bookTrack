@@ -248,6 +248,7 @@ const firebaseConfig = {
   appId: "1:142517413514:web:1ce3055897480fe5c46f73"
 };
 const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbyUx6zB3snMWXzV8G0zUb54XWxcUnypDDiT7FKkSlgV2x2mh24lLHuGfvgp1_7SLeSWAA/exec";
+const GOOGLE_BOOKS_API_KEY = "AIzaSyBG8MCACmjKpsXTOCj25VQBBhr-4T-E6No";
 const KNOWN_SUBGENRES = ["Fantasy","Historical Fiction","Classics","Memoir","Young Adult","YA","Thriller","Dystopia","Essay","Science Fiction","Poetry","Biography","Horror","Mystery","Romance","Short Stories","Graphic Novel","Philosophy","Nature Writing"];
 const LANG_MAP = {en:"English",it:"Italian",es:"Spanish",fr:"French",pt:"Portuguese",ca:"Valencian",de:"German"};
 
@@ -454,7 +455,7 @@ async function saveBook(){
 }
 
 async function searchBooks(query){
-  const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=8`);
+  const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=8&key=${GOOGLE_BOOKS_API_KEY}`);
   const data = await res.json();
   if(data.error){
     throw new Error(`Google Books: ${data.error.message||data.error.status||"error desconocido"}`);
