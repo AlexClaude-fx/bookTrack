@@ -223,10 +223,6 @@
             <option value="Wishlist">Lista de deseos</option>
           </select>
         </div>
-        <div>
-          <label>Premio</label>
-          <input type="text" id="f_prize">
-        </div>
       </div>
       <div class="warning" id="dupWarning" style="display:none;"></div>
       <div class="modal-actions">
@@ -419,23 +415,27 @@ async function saveBook(){
     language: $("f_language").value.trim(),
     genre: $("f_genre").value.trim(),
     subgenre: $("f_subgenre").value.trim(),
-    status: $("f_status").value,
-    prize: $("f_prize").value.trim()
+    status: $("f_status").value
   };
   if(!book.title){ alert("Ponle al menos un título."); return; }
 
-  $("saveBook").disabled = true;
+  const saveBtn = $("saveBook");
+  saveBtn.disabled = true;
+  const originalLabel = saveBtn.textContent;
+  saveBtn.innerHTML = `<span class="spinner"></span> Guardando…`;
   setSync("Guardando…", true);
   try{
     if(editingId){
       const original = allBooks.find(b=>b.id===editingId);
       book.read = original ? original.read : false;
+      book.prize = original ? (original.prize||"") : "";
       await booksCol.doc(editingId).update(book);
       if(original && original.rowIndex){
         await sheetPost({action:"update", rowIndex: original.rowIndex, book: toSheetRow(book)});
       }
     }else{
       book.read = false;
+      book.prize = "";
       await sheetPost({action:"add", book: toSheetRow(book)});
       const data = await sheetGet();
       const match = (data.books||[]).filter(r => norm(r.Author)===norm(book.author) && norm(r.Title)===norm(book.title));
@@ -450,7 +450,8 @@ async function saveBook(){
     alert("Algo falló guardando el libro. Revisa la consola.");
     setSync("Error al sincronizar: " + (err.message||err), false, true);
   }finally{
-    $("saveBook").disabled = false;
+    saveBtn.disabled = false;
+    saveBtn.textContent = originalLabel;
   }
 }
 
@@ -578,7 +579,7 @@ function openModal(){
   $("scanBox").style.display = "none";
   $("bookQuery").value = "";
   $("dupWarning").style.display = "none";
-  ["f_title","f_author","f_country","f_language","f_genre","f_subgenre","f_prize"].forEach(id=>$(id).value="");
+  ["f_title","f_author","f_country","f_language","f_genre","f_subgenre"].forEach(id=>$(id).value="");
   $("f_status").value = "Wishlist";
   $("countryHint").textContent = "";
 }
@@ -599,7 +600,6 @@ function openEditModal(b){
   $("f_genre").value = b.genre||"";
   $("f_subgenre").value = b.subgenre||"";
   $("f_status").value = b.status||"Wishlist";
-  $("f_prize").value = b.prize||"";
   $("countryHint").textContent = "";
 }
 
@@ -610,8 +610,9 @@ function goToForm(){
 
 async function fillFormFromResult(item){
   const info = item.volumeInfo || {};
+  const rawAuthor = (info.authors||[])[0] || "";
   $("f_title").value = info.title || "";
-  $("f_author").value = formatAuthor((info.authors||[])[0] || "");
+  $("f_author").value = formatAuthor(rawAuthor);
   $("f_language").value = LANG_MAP[info.language] || info.language || "";
   const {genre, subgenre} = guessGenreSubgenre(info.categories);
   $("f_genre").value = genre;
@@ -620,7 +621,7 @@ async function fillFormFromResult(item){
   $("countryHint").textContent = "Buscando país del autor…";
   goToForm();
   checkAndWarnDuplicate();
-  const country = await lookupCountry($("f_author").value);
+  const country = await lookupCountry(rawAuthor);
   $("f_country").value = country;
   $("countryHint").textContent = country ? "" : "No se encontró con certeza — revísalo a mano.";
 }
