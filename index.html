@@ -143,7 +143,6 @@
     <p class="tagline">Busca un autor o título para saber si ya lo tienes</p>
     <div class="toolbar">
       <input type="search" id="searchBox" placeholder="Autor o título…">
-      <button class="btn-ghost" id="searchGo">Buscar</button>
       <select id="filterStatus">
         <option value="">Todos los estados</option>
         <option value="Physical">Físico</option>
@@ -672,7 +671,6 @@ $("cancelScan").addEventListener("click", stopScan);
 
 $("resyncBtn").addEventListener("click", syncFromSheet);
 $("searchBox").addEventListener("input", render);
-$("searchGo").addEventListener("click", ()=>{ render(); $("searchBox").blur(); });
 $("filterStatus").addEventListener("change", render);
 $("filterRead").addEventListener("change", render);
 
