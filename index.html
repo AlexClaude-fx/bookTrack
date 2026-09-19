@@ -474,31 +474,44 @@ function isbn13to10(isbn13){
 }
 
 async function lookupOpenLibrary(isbn){
-  try{
-    const res = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`);
-    const data = await res.json();
-    const book = data[`ISBN:${isbn}`];
-    if(!book) return null;
-    return { volumeInfo: {
-      title: book.title || "",
-      authors: (book.authors||[]).map(a=>a.name),
-      categories: (book.subjects||[]).map(s=>s.name),
-      language: ""
-    }};
-  }catch(err){ console.error("Open Library lookup failed", err); return null; }
+  const res = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`);
+  const data = await res.json();
+  const book = data[`ISBN:${isbn}`];
+  if(!book) return null;
+  return { volumeInfo: {
+    title: book.title || "",
+    authors: (book.authors||[]).map(a=>a.name),
+    categories: (book.subjects||[]).map(s=>s.name),
+    language: ""
+  }};
 }
 
-/* Try the exact ISBN, then its ISBN-10 form, then Open Library, before giving up */
+/* Try the exact ISBN, then its ISBN-10 form, then Open Library — keep a log of what happened at each step */
 async function searchByIsbnChain(isbn){
-  let items = await searchBooks(`isbn:${isbn}`);
-  if(items.length) return items;
+  const log = [];
+  try{
+    const items = await searchBooks(`isbn:${isbn}`);
+    log.push(`Google Books (${isbn}): ${items.length} resultado(s)`);
+    if(items.length) return {items, log};
+  }catch(err){ log.push(`Google Books (${isbn}) falló: ${err.message||err}`); }
+
   const isbn10 = isbn13to10(isbn);
   if(isbn10){
-    items = await searchBooks(`isbn:${isbn10}`);
-    if(items.length) return items;
+    try{
+      const items = await searchBooks(`isbn:${isbn10}`);
+      log.push(`Google Books (${isbn10}): ${items.length} resultado(s)`);
+      if(items.length) return {items, log};
+    }catch(err){ log.push(`Google Books (${isbn10}) falló: ${err.message||err}`); }
   }
-  const ol = await lookupOpenLibrary(isbn);
-  return ol ? [ol] : [];
+
+  try{
+    const ol = await lookupOpenLibrary(isbn);
+    log.push(`Open Library: ${ol ? "encontrado" : "sin resultado"}`);
+    return {items: ol ? [ol] : [], log};
+  }catch(err){
+    log.push(`Open Library falló: ${err.message||err}`);
+    return {items:[], log};
+  }
 }
 
 function formatAuthor(name){
@@ -628,8 +641,15 @@ async function runSearch(q){
   const bareDigits = q.replace(/^isbn:/i,"").replace(/[^0-9Xx]/g,"");
   const looksLikeIsbn = /^isbn:/i.test(q) || /^(?:\d{13}|\d{9}[\dXx])$/.test(bareDigits);
   let items = [];
+  let isbnLog = null;
   try{
-    items = looksLikeIsbn ? await searchByIsbnChain(bareDigits) : await searchBooks(q);
+    if(looksLikeIsbn){
+      const result = await searchByIsbnChain(bareDigits);
+      items = result.items;
+      isbnLog = result.log;
+    }else{
+      items = await searchBooks(q);
+    }
   }catch(err){
     console.error("Search failed", err);
     $("doSearch").textContent = "Buscar";
@@ -638,7 +658,7 @@ async function runSearch(q){
   }
   $("doSearch").textContent = "Buscar";
   const notFoundMsg = looksLikeIsbn
-    ? `No lo encuentro ni por ISBN ni en Open Library — prueba a buscar por título/autor, o "Rellenar a mano".`
+    ? `No lo encuentro. Detalle:<br>${isbnLog.join("<br>")}<br>Prueba a buscar por título/autor, o "Rellenar a mano".`
     : `Sin resultados para esa búsqueda — prueba con otras palabras, o "Rellenar a mano".`;
   box.innerHTML = items.length ? "" : `<div class="result-item">${notFoundMsg}</div>`;
   items.forEach(item=>{
