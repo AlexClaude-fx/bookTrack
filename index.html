@@ -550,7 +550,7 @@ function guessGenreSubgenre(categories){
 async function lookupCountry(authorName){
   if(!authorName) return "";
   try{
-    const searchRes = await fetch(`https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(authorName)}&language=es&format=json&origin=*&type=item&limit=1`);
+    const searchRes = await fetch(`https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(authorName)}&language=en&format=json&origin=*&type=item&limit=1`);
     const searchData = await searchRes.json();
     const id = searchData.search && searchData.search[0] && searchData.search[0].id;
     if(!id) return "";
@@ -694,13 +694,19 @@ async function startScan(){
   $("scanBox").style.display = "block";
   $("scanHint").textContent = "Apunta a la parte trasera del libro, al código de barras.";
   try{
-    scanner = new ZXing.BrowserMultiFormatReader();
+    const hints = new Map();
+    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8]);
+    scanner = new ZXing.BrowserMultiFormatReader(hints);
     await scanner.decodeFromConstraints(
       { video: { facingMode: "environment" } },
       "scanVideo",
       (result, err) => {
         if(result){
           const isbn = result.getText();
+          if(!/^97[89]\d{10}$/.test(isbn)){
+            $("scanHint").textContent = `Código detectado (${isbn}) no parece un ISBN de libro — sigo escaneando, ajusta el encuadre al código grande.`;
+            return; // keep scanning, don't accept a non-book barcode
+          }
           stopScan();
           $("bookQuery").value = isbn;
           runSearch(`isbn:${isbn}`);
