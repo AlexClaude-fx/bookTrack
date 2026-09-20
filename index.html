@@ -183,13 +183,17 @@
     </div>
 
     <div id="formStep" style="display:none;">
-      <div class="full" style="display:flex;gap:12px;align-items:center;margin-bottom:6px;">
+      <div class="full" style="display:flex;gap:12px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
         <img id="coverPreview" class="cover-thumb" src="" alt="" style="display:none;">
         <div class="cover-thumb cover-placeholder" id="coverPlaceholder">📖</div>
         <label class="btn-ghost" style="cursor:pointer;font-size:.82rem;padding:7px 12px;">
           📷 Cambiar portada
           <input type="file" id="coverFile" accept="image/*" style="display:none;">
         </label>
+        <div id="altCoverBox" style="display:none;text-align:center;">
+          <img id="altCoverImg" class="cover-thumb" src="" alt="" style="cursor:pointer;">
+          <div class="hint">¿Es esta?</div>
+        </div>
       </div>
       <div class="field-grid">
         <div class="full">
@@ -651,6 +655,7 @@ function openModal(){
   pendingCover = "";
   coverTouched = false;
   updateCoverPreview();
+  $("altCoverBox").style.display = "none";
   $("countryHint").textContent = "";
 }
 function closeModal(){ stopScan(); editingId = null; $("overlay").classList.remove("open"); }
@@ -674,6 +679,7 @@ function openEditModal(b){
   pendingCover = b.cover||"";
   coverTouched = false;
   updateCoverPreview();
+  $("altCoverBox").style.display = "none";
   $("countryHint").textContent = "";
 }
 
@@ -713,6 +719,28 @@ $("coverFile").addEventListener("change", (e)=>{
   reader.readAsDataURL(file);
 });
 
+function tryAlternateCover(info){
+  $("altCoverBox").style.display = "none";
+  const ids = info.industryIdentifiers || [];
+  const isbn13 = (ids.find(i=>i.type==="ISBN_13")||{}).identifier;
+  if(!isbn13) return;
+  const url = `https://covers.openlibrary.org/b/isbn/${isbn13}-M.jpg?default=false`;
+  const test = new Image();
+  test.onload = () => {
+    if(test.naturalWidth < 10) return; // guard against a tiny placeholder slipping through
+    $("altCoverImg").src = url;
+    $("altCoverBox").style.display = "block";
+  };
+  test.onerror = () => {}; // no cover on Open Library for this ISBN — just skip it
+  test.src = url;
+}
+$("altCoverImg").addEventListener("click", ()=>{
+  pendingCover = $("altCoverImg").src;
+  coverTouched = true;
+  updateCoverPreview();
+  $("altCoverBox").style.display = "none";
+});
+
 async function fillFormFromResult(item){
   const info = item.volumeInfo || {};
   const rawAuthor = (info.authors||[])[0] || "";
@@ -727,6 +755,7 @@ async function fillFormFromResult(item){
   pendingCover = (info.imageLinks && info.imageLinks.thumbnail) ? info.imageLinks.thumbnail.replace(/^http:/,"https:") : "";
   coverTouched = false;
   updateCoverPreview();
+  tryAlternateCover(info);
   goToForm();
   checkAndWarnDuplicate();
   const country = await lookupCountry(rawAuthor);
