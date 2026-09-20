@@ -183,6 +183,14 @@
     </div>
 
     <div id="formStep" style="display:none;">
+      <div class="full" style="display:flex;gap:12px;align-items:center;margin-bottom:6px;">
+        <img id="coverPreview" class="cover-thumb" src="" alt="" style="display:none;">
+        <div class="cover-thumb cover-placeholder" id="coverPlaceholder">📖</div>
+        <label class="btn-ghost" style="cursor:pointer;font-size:.82rem;padding:7px 12px;">
+          📷 Cambiar portada
+          <input type="file" id="coverFile" accept="image/*" style="display:none;">
+        </label>
+      </div>
       <div class="field-grid">
         <div class="full">
           <label>Título</label>
@@ -485,7 +493,7 @@ async function saveBook(){
       const original = allBooks.find(b=>b.id===editingId);
       book.read = original ? original.read : false;
       book.prize = original ? (original.prize||"") : "";
-      book.cover = original ? (original.cover||"") : "";
+      book.cover = coverTouched ? pendingCover : (original ? (original.cover||"") : "");
       await booksCol.doc(editingId).update(book);
       if(original && original.rowIndex){
         await sheetPost({action:"update", rowIndex: original.rowIndex, book: toSheetRow(book)});
@@ -505,7 +513,7 @@ async function saveBook(){
     closeModal();
   }catch(err){
     console.error(err);
-    alert("Algo falló guardando el libro. Revisa la consola.");
+    alert("Algo falló guardando el libro: " + (err.message||err));
     setSync("Error al sincronizar: " + (err.message||err), false, true);
   }finally{
     saveBtn.disabled = false;
@@ -617,10 +625,10 @@ async function lookupCountry(authorName){
     const claims = claimsData.claims && claimsData.claims.P27;
     if(!claims || !claims.length) return "";
     const countryId = claims[0].mainsnak.datavalue.value.id;
-    const labelRes = await fetch(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${countryId}&props=labels&languages=es|en&format=json&origin=*`);
+    const labelRes = await fetch(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${countryId}&props=labels&languages=en|es&format=json&origin=*`);
     const labelData = await labelRes.json();
     const labels = labelData.entities[countryId].labels;
-    return (labels.es && labels.es.value) || (labels.en && labels.en.value) || "";
+    return (labels.en && labels.en.value) || (labels.es && labels.es.value) || "";
   }catch(err){
     console.error("Wikidata lookup failed", err);
     return "";
@@ -641,6 +649,8 @@ function openModal(){
   $("f_status").value = "Physical";
   $("statusField").style.display = "none";
   pendingCover = "";
+  coverTouched = false;
+  updateCoverPreview();
   $("countryHint").textContent = "";
 }
 function closeModal(){ stopScan(); editingId = null; $("overlay").classList.remove("open"); }
@@ -661,6 +671,9 @@ function openEditModal(b){
   $("f_subgenre").value = b.subgenre||"";
   $("f_status").value = b.status||"Wishlist";
   $("statusField").style.display = "block";
+  pendingCover = b.cover||"";
+  coverTouched = false;
+  updateCoverPreview();
   $("countryHint").textContent = "";
 }
 
@@ -670,6 +683,36 @@ function goToForm(){
 }
 
 let pendingCover = "";
+let coverTouched = false;
+
+function updateCoverPreview(){
+  const img = $("coverPreview"), ph = $("coverPlaceholder");
+  if(pendingCover){ img.src = pendingCover; img.style.display = "block"; ph.style.display = "none"; }
+  else{ img.style.display = "none"; ph.style.display = "flex"; }
+}
+
+$("coverFile").addEventListener("change", (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev)=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const maxW = 240;
+      const scale = Math.min(1, maxW / img.width);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width*scale);
+      canvas.height = Math.round(img.height*scale);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      pendingCover = canvas.toDataURL("image/jpeg", 0.72);
+      coverTouched = true;
+      updateCoverPreview();
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
 async function fillFormFromResult(item){
   const info = item.volumeInfo || {};
   const rawAuthor = (info.authors||[])[0] || "";
@@ -682,6 +725,8 @@ async function fillFormFromResult(item){
   $("f_country").value = "";
   $("countryHint").textContent = "Buscando país del autor…";
   pendingCover = (info.imageLinks && info.imageLinks.thumbnail) ? info.imageLinks.thumbnail.replace(/^http:/,"https:") : "";
+  coverTouched = false;
+  updateCoverPreview();
   goToForm();
   checkAndWarnDuplicate();
   const country = await lookupCountry(rawAuthor);
