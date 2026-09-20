@@ -258,12 +258,26 @@ function setSync(text, busy, isError){
   $("syncDot").className = "sync-dot" + (busy ? " busy" : "") + (isError ? " error" : "");
 }
 
+async function fetchWithTimeout(url, options, timeoutMs=15000){
+  const controller = new AbortController();
+  const timer = setTimeout(()=>controller.abort(), timeoutMs);
+  try{
+    return await fetch(url, {...options, signal: controller.signal});
+  }catch(err){
+    if(err.name === "AbortError"){
+      throw new Error(`El Sheet tardó más de ${timeoutMs/1000}s en responder — puede ser una cuota de Google Apps Script agotada por hoy.`);
+    }
+    throw err;
+  }finally{
+    clearTimeout(timer);
+  }
+}
 async function sheetGet(){
-  const res = await fetch(SHEET_API_URL);
+  const res = await fetchWithTimeout(SHEET_API_URL);
   return res.json();
 }
 async function sheetPost(payload){
-  await fetch(SHEET_API_URL, {
+  await fetchWithTimeout(SHEET_API_URL, {
     method:"POST",
     body: JSON.stringify(payload),
     headers:{"Content-Type":"text/plain;charset=utf-8"}
