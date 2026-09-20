@@ -585,7 +585,7 @@ async function searchByIsbnChain(isbn){
   try{
     const items = await searchBooks(isbn);
     log.push(`Google Books (texto plano "${isbn}"): ${items.length} resultado(s)`);
-    return {items, log};
+    return {items, log, imprecise: items.length > 0};
   }catch(err){
     log.push(`Google Books (texto plano) falló: ${err.message||err}`);
     return {items:[], log};
@@ -766,11 +766,13 @@ async function runSearch(q){
   const looksLikeIsbn = /^isbn:/i.test(q) || /^(?:\d{13}|\d{9}[\dXx])$/.test(bareDigits);
   let items = [];
   let isbnLog = null;
+  let imprecise = false;
   try{
     if(looksLikeIsbn){
       const result = await searchByIsbnChain(bareDigits);
       items = result.items;
       isbnLog = result.log;
+      imprecise = !!result.imprecise;
     }else{
       items = await searchBooks(q);
     }
@@ -784,7 +786,8 @@ async function runSearch(q){
   const notFoundMsg = looksLikeIsbn
     ? `No lo encuentro. Detalle:<br>${isbnLog.join("<br>")}<br>Prueba a buscar por título/autor, o "Rellenar a mano".`
     : `Sin resultados para esa búsqueda — prueba con otras palabras, o "Rellenar a mano".`;
-  box.innerHTML = items.length ? "" : `<div class="result-item">${notFoundMsg}</div>`;
+  const impreciseMsg = `<div class="result-item" style="color:var(--oxblood);">⚠️ No hubo coincidencia exacta por ISBN — esto puede ser otra edición. Revisa portada, idioma y título antes de guardar.</div>`;
+  box.innerHTML = items.length ? (imprecise ? impreciseMsg : "") : `<div class="result-item">${notFoundMsg}</div>`;
   items.forEach(item=>{
     const info = item.volumeInfo||{};
     const div = document.createElement("div");
