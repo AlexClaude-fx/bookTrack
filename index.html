@@ -154,7 +154,7 @@
 </header>
 
 <main>
-  <div class="sync-line"><span class="sync-dot" id="syncDot"></span><span id="syncText">Conectando con tu Sheet…</span><button class="btn-link" id="resyncBtn" style="padding:0 0 0 6px;">🔄 Releer del Sheet</button></div>
+  <div class="sync-line"><span class="sync-dot" id="syncDot"></span><span id="syncText">Conectando con tu Sheet…</span><button class="btn-link" id="resyncBtn" style="padding:0 0 0 6px;">🔄 Releer del Sheet</button><button class="btn-link" id="backfillCoversBtn" style="padding:0 0 0 6px;">🖼️ Buscar portadas que faltan</button></div>
   <div id="shelves"></div>
 </main>
 
@@ -393,6 +393,55 @@ function toSheetRow(b){
     Read: b.read ? "TRUE":"FALSE", Status:b.status||"Physical", Language:b.language||"",
     Genre:b.genre||"", "Sub-genre":b.subgenre||"", Prize:b.prize||""
   };
+}
+
+function toNaturalName(name){
+  if(!name) return "";
+  const parts = name.split(",");
+  return parts.length === 2 ? `${parts[1].trim()} ${parts[0].trim()}` : name;
+}
+
+async function backfillCovers(){
+  const missing = allBooks.filter(b => !b.cover);
+  const btn = $("backfillCoversBtn");
+  if(!missing.length){ alert("Todos tus libros ya tienen portada."); return; }
+  if(!confirm(`Voy a buscar portada para ${missing.length} libro(s). Puede tardar un rato — ¿sigo?`)) return;
+
+  btn.disabled = true;
+  const notFound = [];
+  let done = 0;
+  for(const b of missing){
+    done++;
+    btn.textContent = `🖼️ Buscando… (${done}/${missing.length})`;
+    try{
+      const query = `intitle:${b.title} inauthor:${toNaturalName(b.author)}`;
+      const items = await searchBooks(query);
+      const thumb = items[0] && items[0].volumeInfo && items[0].volumeInfo.imageLinks && items[0].volumeInfo.imageLinks.thumbnail;
+      if(thumb){
+        await booksCol.doc(b.id).update({cover: thumb.replace(/^http:/,"https:")});
+      }else{
+        notFound.push({author:b.author, title:b.title});
+      }
+    }catch(err){
+      console.error("Backfill failed for", b.title, err);
+      notFound.push({author:b.author, title:b.title});
+    }
+    await new Promise(r=>setTimeout(r, 250));
+  }
+  btn.disabled = false;
+  btn.textContent = "🖼️ Buscar portadas que faltan";
+
+  if(notFound.length){
+    const blob = new Blob([JSON.stringify(notFound, null, 2)], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "libros_sin_portada.json";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    alert(`Listo. ${missing.length - notFound.length} portada(s) encontradas. ${notFound.length} sin portada — se ha descargado "libros_sin_portada.json" con la lista.`);
+  }else{
+    alert("¡Listo! Se encontró portada para todos.");
+  }
 }
 
 function checkDuplicate(author, title){
@@ -727,6 +776,7 @@ $("scanBtn").addEventListener("click", startScan);
 $("cancelScan").addEventListener("click", stopScan);
 
 $("resyncBtn").addEventListener("click", syncFromSheet);
+$("backfillCoversBtn").addEventListener("click", backfillCovers);
 $("searchBox").addEventListener("input", render);
 
 
